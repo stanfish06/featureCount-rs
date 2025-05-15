@@ -1,0 +1,8 @@
+[package]
+name = "featureCount-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bam = "0.1.4"
+rand = "0.9.1"
