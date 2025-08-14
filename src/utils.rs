@@ -1,11 +1,16 @@
+use chrono::Local;
 use std::fmt;
+use std::fs::{File, create_dir, create_dir_all, remove_dir_all};
 use std::io;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use bam::RecordWriter;
 use bam::header::{Header, HeaderEntry};
 use rand::Rng;
 use rand::distr::{Distribution, StandardUniform};
+
+use crate::main;
 
 pub enum DnaBase {
     A,
@@ -39,7 +44,36 @@ impl fmt::Display for DnaBase {
     }
 }
 
-pub fn generate_rand_sam_and_bam(n_base: usize, n_entry: u16) {
+pub fn create_test_folder(
+    replace: bool,
+    name: Option<&str>,
+    create_sub_today: bool,
+) -> Result<PathBuf, io::Error> {
+    let main_test_folder = Path::new("./featureCount_test");
+    let today_date = Local::now().date_naive().to_string();
+    match name {
+        Some(sub_folder) => {
+            let sub_folder_path = main_test_folder.join(sub_folder);
+            if replace {
+                remove_dir_all(&sub_folder_path)?;
+            }
+            let target_dir = if create_sub_today {
+                sub_folder_path.join(today_date)
+            } else {
+                sub_folder_path
+            };
+            if target_dir.is_dir() {
+                println!("{} already exists", target_dir.display());
+            } else {
+                create_dir_all(&target_dir)?;
+            }
+            Ok(target_dir.to_path_buf())
+        }
+        None => panic!("Need to specify a folder"),
+    }
+}
+
+pub fn generate_rand_sam_and_bam(n_base: usize, n_entry: u16) -> Result<(), io::Error> {
     let mut rng = rand::rng();
     let mut sequence: Vec<DnaBase> = Vec::with_capacity(n_base);
     // Creating a header.
@@ -53,7 +87,12 @@ pub fn generate_rand_sam_and_bam(n_base: usize, n_entry: u16) {
         .push_entry(HeaderEntry::ref_sequence("chr1".to_string(), 10000))
         .unwrap();
 
-    let output = io::BufWriter::new(io::stdout());
+    let id = Uuid::new_v4().to_string();
+    let mut folder = create_test_folder(false, Some("sam_test"), true)?;
+    folder.push(format!("{}.sam", id));
+    let file = File::create(folder).unwrap();
+
+    let output = io::BufWriter::new(file);
     let mut writer = bam::SamWriter::from_stream(output, header).unwrap();
     for i in 0..n_entry {
         for j in 0..n_base {
@@ -76,4 +115,5 @@ pub fn generate_rand_sam_and_bam(n_base: usize, n_entry: u16) {
         writer.write(&record).unwrap();
     }
     writer.finish().unwrap();
+    Ok(())
 }

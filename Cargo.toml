@@ -6,4 +6,10 @@ edition = "2024"
 [dependencies]
 bam = "0.1.4"
 rand = "0.9.1"
-uuid = "1.17.0"
+chrono = "0.4"
+
+[dependencies.uuid]
+version = "1.18.0"
+features = [
+ "v4",
+]
