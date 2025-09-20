@@ -1,6 +1,6 @@
 use chrono::Local;
 use std::fmt;
-use std::fs::{File, create_dir, create_dir_all, remove_dir_all};
+use std::fs::{File, create_dir_all, remove_dir_all};
 use std::io;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -9,8 +9,6 @@ use bam::RecordWriter;
 use bam::header::{Header, HeaderEntry};
 use rand::Rng;
 use rand::distr::{Distribution, StandardUniform};
-
-use crate::main;
 
 pub enum DnaBase {
     A,
@@ -73,7 +71,7 @@ pub fn create_test_folder(
     }
 }
 
-pub fn generate_rand_sam_and_bam(n_base: usize, n_entry: u16) -> Result<(), io::Error> {
+pub fn generate_rand_sam_and_bam(n_base: usize, n_entry: u16) -> Result<PathBuf, io::Error> {
     let mut rng = rand::rng();
     let mut sequence: Vec<DnaBase> = Vec::with_capacity(n_base);
     // Creating a header.
@@ -90,10 +88,10 @@ pub fn generate_rand_sam_and_bam(n_base: usize, n_entry: u16) -> Result<(), io::
     let id = Uuid::new_v4().to_string();
     let mut folder = create_test_folder(false, Some("sam_test"), true)?;
     folder.push(format!("{}.sam", id));
-    let file = File::create(folder).unwrap();
+    let file = File::create(&folder).unwrap();
 
     let output = io::BufWriter::new(file);
-    let mut writer = bam::SamWriter::from_stream(output, header).unwrap();
+    let mut sam_writer = bam::SamWriter::from_stream(output, header).unwrap();
     for i in 0..n_entry {
         for j in 0..n_base {
             let rand_base: DnaBase = StandardUniform.sample(&mut rng);
@@ -112,8 +110,22 @@ pub fn generate_rand_sam_and_bam(n_base: usize, n_entry: u16) -> Result<(), io::
         record.flag_mut().set_strand(false);
         record.set_seq_qual(sequence_str.bytes(), sequence.iter().map(|base| 30));
         record.tags_mut().push_num(b"NM", 1);
-        writer.write(&record).unwrap();
+        record.set_cigar(format!("{}M", n_base).bytes());
+        sam_writer.write(&record).unwrap();
     }
-    writer.finish().unwrap();
-    Ok(())
+    sam_writer.finish().unwrap();
+    // read in sam and save bam
+    let mut sam_reader = bam::SamReader::from_path(&folder)?;
+    let header = sam_reader.header().clone();
+    folder = create_test_folder(false, Some("bam_test"), true)?;
+    folder.push(format!("{}.bam", id));
+    let file = File::create(&folder).unwrap();
+    let output = io::BufWriter::new(file);
+    let mut bam_writer = bam::BamWriter::from_stream(output, header).unwrap();
+    for record in sam_reader {
+        let record = record.unwrap();
+        bam_writer.write(&record).unwrap();
+    }
+    bam_writer.finish().unwrap();
+    Ok(folder)
 }
